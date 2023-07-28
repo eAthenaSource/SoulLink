@@ -1,0 +1,237 @@
+From e5f4137bde5b2b92ceca3c6bf78002ca4ee9767e Mon Sep 17 00:00:00 2001
+From: Jittapan Pluemsumran <secret@jittapan.app>
+Date: Thu, 2 Apr 2020 13:26:35 +0700
+Subject: [PATCH] 20200611
+
+---
+ db/soul_link.yml             | 71 ++++++++++++++++++++++++++++++++++++
+ src/map/script.cpp           |  1 +
+ src/map/script_constants.hpp | 17 +++++++++
+ src/map/status.cpp           | 59 ++++++++++++++++++++++++++++++
+ 4 files changed, 148 insertions(+)
+ create mode 100644 db/soul_link.yml
+
+diff --git a/db/soul_link.yml b/db/soul_link.yml
+new file mode 100644
+index 000000000..e68a6e894
+--- /dev/null
++++ b/db/soul_link.yml
+@@ -0,0 +1,71 @@
++# Custom soul link buffs.
++# Author: Secret <Secret@rathena.org>
++#
++# Format
++# <SL_ constant>: <YAML string literal with a pair of enclosing bracket for the script>
++#
++# You can code the script just like an item script.
++#
++# Use ONLY spaces to indent.
++# DONT USE TABS
++
++SL_ALCHEMIST: |
++    {
++        bonus bStr,1;
++    }
++SL_MONK: |
++    {
++        bonus bStr,1;
++    }
++SL_STAR: |
++    {
++        bonus bStr,1;
++    }
++SL_SAGE: |
++    {
++        bonus bStr,1;
++    }
++SL_CRUSADER: |
++    {
++        bonus bStr,1;
++    }
++SL_SUPERNOVICE: |
++    {
++        bonus bStr,1;
++    }
++SL_KNIGHT: |
++    {
++        bonus bStr,1;
++    }
++SL_WIZARD: |
++    {
++        bonus bStr,1;
++    }
++SL_PRIEST: |
++    {
++        bonus bStr,1;
++    }
++SL_BARDDANCER: |
++    {
++        bonus bStr,1;
++    }
++SL_ROGUE: |
++    {
++        bonus bStr,1;
++    }
++SL_ASSASIN: |
++    {
++        bonus bStr,1;
++    }
++SL_BLACKSMITH: |
++    {
++        bonus bStr,1;
++    }
++SL_HUNTER: |
++    {
++        bonus bStr,1;
++    }
++SL_SOULLINKER: |
++    {
++        bonus bStr,1;
++    }
+diff --git a/src/map/script.cpp b/src/map/script.cpp
+index 5dcfd7463..43e6a571a 100644
+--- a/src/map/script.cpp
++++ b/src/map/script.cpp
+@@ -60,6 +60,7 @@
+ #include "pc_groups.hpp"
+ #include "pet.hpp"
+ #include "quest.hpp"
++#include "status.hpp"
+ #include "storage.hpp"
+ 
+ using namespace rathena;
+diff --git a/src/map/script_constants.hpp b/src/map/script_constants.hpp
+index e8f496d75..42d54a6e1 100644
+--- a/src/map/script_constants.hpp
++++ b/src/map/script_constants.hpp
+@@ -16,6 +16,23 @@
+ 	export_constant(INT_MIN);
+ 	export_constant(INT_MAX);
+ 
++	/* soul links */
++	export_constant(SL_ALCHEMIST);
++	export_constant(SL_MONK);
++	export_constant(SL_STAR);
++	export_constant(SL_SAGE);
++	export_constant(SL_CRUSADER);
++	export_constant(SL_SUPERNOVICE);
++	export_constant(SL_KNIGHT);
++	export_constant(SL_WIZARD);
++	export_constant(SL_PRIEST);
++	export_constant(SL_BARDDANCER);
++	export_constant(SL_ROGUE);
++	export_constant(SL_ASSASIN);
++	export_constant(SL_BLACKSMITH);
++	export_constant(SL_HUNTER);
++	export_constant(SL_SOULLINKER);
++
+ 	/* server defines */
+ 	export_constant(PACKETVER);
+ 	export_constant(MAX_LEVEL);
+diff --git a/src/map/status.cpp b/src/map/status.cpp
+index 947f03ed4..7f644c604 100644
+--- a/src/map/status.cpp
++++ b/src/map/status.cpp
+@@ -7,6 +7,7 @@
+ #include <math.h>
+ #include <stdlib.h>
+ #include <string>
++#include <unordered_map>
+ #include <yaml-cpp/yaml.h>
+ 
+ #include "../common/cbasetypes.hpp"
+@@ -65,6 +66,8 @@ int current_equip_card_id; /// To prevent card-stacking (from jA) [Skotlex]
+ // We need it for new cards 15 Feb 2005, to check if the combo cards are insrerted into the CURRENT weapon only to avoid cards exploits
+ short current_equip_opt_index; /// Contains random option index of an equipped item. [Secret]
+ 
++std::unordered_map<int, script_code*> soul_link;
++
+ unsigned int SCDisabled[SC_MAX]; ///< List of disabled SC on map zones. [Cydh]
+ 
+ sc_type SkillStatusChangeTable[MAX_SKILL];
+@@ -4167,6 +4170,13 @@ int status_calc_pc_sub(struct map_session_data* sd, enum e_status_calc_opt opt)
+ 		current_equip_opt_index = -1;
+ 	}
+ 
++	if (sd && sc->count && sc->data[SC_SPIRIT]) {
++		auto spirit = sc->data[SC_SPIRIT];
++		if (spirit != nullptr && soul_link.find(spirit->val2) != soul_link.end() && soul_link[spirit->val2] != nullptr) {
++			run_script(soul_link[spirit->val2], 0, sd->bl.id, 0);
++		}
++	}
++
+ 	if (sc->count && sc->data[SC_ITEMSCRIPT]) {
+ 		struct item_data *data = itemdb_exists(sc->data[SC_ITEMSCRIPT]->val1);
+ 		if (data && data->script)
+@@ -15682,6 +15692,53 @@ static bool status_readdb_attrfix(const char *basedir,bool silent)
+ 	return true;
+ }
+ 
++void status_read_soullink_db(char* file_name) {
++	YAML::Node root;
++	int count = 0;
++	try {
++		root = YAML::LoadFile(file_name);
++		if (root.IsMap()) {
++			for (auto node : root) {
++				struct script_code *code;
++				std::string key = node.first.as<std::string>();
++				int64 constant = 0;
++				if (key.compare(0, 3, "SL_")) {
++					ShowWarning("status_read_soullink_db: Expected a constant with SL_ prefix, got %s.\n", key.c_str());
++					continue;
++				}
++				if (!script_get_constant(key.c_str(), &constant)) {
++					ShowWarning("status_read_soullink_db: Tried to assign custom buff to nonexistent constant %s.\n", key.c_str());
++					continue;
++				}
++				if ((code = parse_script(node.second.as<std::string>().c_str(), file_name, node.second.Mark().line, 0)) == NULL) {
++					ShowWarning("status_read_soullink_db: Invalid or empty script on custom soul link %s.\n", key.c_str());
++					continue;
++				}
++				if (soul_link[constant] != nullptr)
++					script_free_code(soul_link[constant]);
++				soul_link[constant] = code;
++				count++;
++			}
++		}
++		else {
++			ShowError("status_read_soullink_db: The file's structure is broken. Root node is not a map.\n");
++		}
++	}
++	catch (...) {
++		ShowError("status_read_soullink_db: Cannot load custom soul link buffs from %s.\n", file_name);
++	}
++
++	ShowInfo("status_read_soullink_db: Done reading %d custom soul links.\n", count);
++}
++
++void status_clear_soul_link_db()
++{
++	for (const auto& entry : soul_link) {
++		script_free_code(entry.second);
++	}
++	soul_link.clear();
++}
++
+ /**
+  * Sets defaults in tables and starts read db functions
+  * sv_readdb reads the file, outputting the information line-by-line to
+@@ -15748,6 +15805,7 @@ int status_readdb(void)
+ 
+ 	size_fix_db.load();
+ 
++	status_read_soullink_db("db/soul_link.yml");
+ 	return 0;
+ }
+ 
+@@ -15768,5 +15826,6 @@ int do_init_status(void)
+ }
+ void do_final_status(void)
+ {
++	status_clear_soul_link_db();
+ 	ers_destroy(sc_data_ers);
+ }
+-- 
+2.27.0.windows.1
+
